@@ -1,7 +1,4 @@
 import re, string, os
-from PMS import *
-from PMS.Objects import *
-from PMS.Shortcuts import *
 
 NYT_PREFIX      = '/video/thenytimes'
 NYT_ROOT        = 'http://video.nytimes.com/video'
@@ -29,7 +26,7 @@ def MainMenu():
   dir.Append(Function(DirectoryItem(GetPlaylist, title=L("Featured")), url=NYT_ROOT, id='playlistMostViewedFeatured'))
   dir.Append(Function(DirectoryItem(GetPlaylist, title=L("Most Viewed")), url=NYT_ROOT, id='playlistMostViewed'))
 
-  for li in XML.ElementFromURL(NYT_ROOT, True).xpath('//td[@id="leftNav"]/ul/li'):
+  for li in HTML.ElementFromURL(NYT_ROOT).xpath('//td[@id="leftNav"]/ul/li'):
     if li.get('class') != 'closed':
       dir.Append(Function(DirectoryItem(GetPlaylist, title=li.find('a').text), url=li.find('a').get('href')))
 
@@ -42,10 +39,10 @@ def GetPlaylist(sender, url, id='playlistCurrent'):
   dir = MediaContainer(viewGroup='Details')
 
   playlistRx = re.compile(r"NYTD_PlaylistMgr.addPlaylist\(({ id:'" + id + ".*?\]})\);", re.MULTILINE | re.DOTALL)
-  data = HTTP.Request(url)
-  xml = XML.ElementFromString(data, True)
+  data = HTTP.Request(url).content
+  xml = HTML.ElementFromString(data)
   listOfMatches = playlistRx.findall(data)
-  obj = JSON.ObjectFromString(listOfMatches[0].encode('utf-8'), errors="ignore")
+  obj = JSON.ObjectFromString(listOfMatches[0].encode('utf-8'))
   
   thumb = None
   for video in obj['list']:
@@ -63,7 +60,7 @@ def Search(sender, query, page=1):
   dir = MediaContainer(viewGroup='Details')
   query=query.replace(' ','+')
   
-  for li in XML.ElementFromURL(NYT_SEARCH % query, True).xpath("//li[@class='clearfix']"):
+  for li in HTML.ElementFromURL(NYT_SEARCH % query).xpath("//li[@class='clearfix']"):
     thumbVideo = li.xpath('ul/li[@class="thumb video"]')
     if len(thumbVideo) > 0:
       video = thumbVideo[0]
