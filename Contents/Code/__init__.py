@@ -1,4 +1,3 @@
-
 TITLE           = 'New York Times'
 ART             = 'art-default.jpg'
 ICON            = 'icon-default.jpg'
@@ -11,6 +10,7 @@ CACHE_INTERVAL = 3600 * 6
 
 ####################################################################################################
 def Start():
+
   Plugin.AddPrefixHandler(NYT_PREFIX, MainMenu, TITLE, ICON, ART)
   Plugin.AddViewGroup("Details", viewMode = "InfoList", mediaType = "items")
 
@@ -25,16 +25,18 @@ def Start():
   VideoClipObject.art = R(ART)
   VideoClipObject.thumb = R(ICON)
 
-  HTTP.SetCacheTime(CACHE_INTERVAL)
+  HTTP.CacheTime = CACHE_INTERVAL
 
 ####################################################################################################
 def MainMenu():
+
   oc = ObjectContainer()
 
   oc.add(DirectoryObject(key = Callback(GetPlaylist, title = L("Featured"), url = NYT_ROOT, id = 'playlistMostViewedFeatured'), title = L("Featured")))
   oc.add(DirectoryObject(key = Callback(GetPlaylist, title = L("Most Viewed"), url = NYT_ROOT, id = 'playlistMostViewed'), title = L("Most Viewed")))
 
   page = HTML.ElementFromURL(NYT_ROOT)
+
   for li in page.xpath('//td[@id="leftNav"]/ul/li'):
     if li.get('class') != 'closed':
       title = li.find('a').text
@@ -47,6 +49,7 @@ def MainMenu():
 
 ####################################################################################################
 def GetPlaylist(title, url, id='playlistCurrent'):
+
   oc = ObjectContainer(title2 = title)
 
   data = HTTP.Request(url).content
@@ -55,31 +58,37 @@ def GetPlaylist(title, url, id='playlistCurrent'):
   playlist_regex = Regex(r"NYTD_PlaylistMgr.addPlaylist\(({ id:'" + id + ".*?\]})\);", Regex.MULTILINE | Regex.DOTALL)
   matches = playlist_regex.findall(data)
   obj = JSON.ObjectFromString(matches[0].encode('utf-8'))
-  
-  thumb = None
+
   for video in obj['list']:
     if 'timg_wide' in video:
-      thumb = video['timg_wide']
+      thumb = video['timg_wide'].replace('-thumbWide.jpg', '-videoLarge.jpg').replace('-videoThumb.jpg', '-videoLarge.jpg')
     else:
-      thumb = xml.xpath('//li[@titleref="' + video['ref'] + '"]/a/img')[0].get('src')
-    
+      try:
+        thumb = xml.xpath('//li[@titleref="' + video['ref'] + '"]/a/img')[0].get('src').replace('-thumbWide.jpg', '-videoLarge.jpg').replace('-videoThumb.jpg', '-videoLarge.jpg')
+      except:
+        thumb = None
+
+    Log(thumb)
+
     oc.add(VideoClipObject(
       url = video['turi'],
       title = video['name'],
       summary = video['desc'],
-      thumb = thumb))
-    
+      thumb = thumb
+    ))
+
   return oc
-  
+
 ####################################################################################################
 def Search(query = 'the', page = 1):
-  oc = ObjectContainer(title2 = query)
 
+  oc = ObjectContainer(title2 = query)
   query = query.replace(' ','+')
-  
   page = HTML.ElementFromURL(NYT_SEARCH % query)
+
   for li in page.xpath("//li[@class='clearfix']"):
     thumbVideo = li.xpath('ul/li[@class="thumb video"]')
+
     if len(thumbVideo) > 0:
       video = thumbVideo[0]
       thumb = video.xpath('a/img')[0].get('src')
@@ -89,17 +98,18 @@ def Search(query = 'the', page = 1):
       date = Datetime.ParseDate(date_text)
       title = ''.join(summaryItem.xpath('h3/a')[0].itertext()).strip()
       title = title.replace(' - Video Library','')
-      
+
       summary = ''.join(li.itertext())
       summary = summary.replace('Video:','')
       summary = summary.replace(' - Video Library','')
       summary = summary.replace(title,'')
       summary = summary.replace(date_text,'')
-      
+
     oc.add(VideoClipObject(
       url = video_url,
       title = title,
       summary = summary.strip(),
-      thumb = thumb))
-  
+      thumb = thumb
+    ))
+
   return oc
