@@ -68,8 +68,6 @@ def GetPlaylist(title, url, id='playlistCurrent'):
       except:
         thumb = None
 
-    Log(thumb)
-
     oc.add(VideoClipObject(
       url = video['turi'],
       title = video['name'],
