@@ -61,12 +61,19 @@ def GetPlaylist(title, url, id='playlistCurrent'):
 
   for video in obj['list']:
     if 'timg_wide' in video:
-      thumb = video['timg_wide'].replace('-thumbWide.jpg', '-videoLarge.jpg').replace('-videoThumb.jpg', '-videoLarge.jpg')
+      thumb = video['timg_wide']
     else:
       try:
-        thumb = xml.xpath('//li[@titleref="' + video['ref'] + '"]/a/img')[0].get('src').replace('-thumbWide.jpg', '-videoLarge.jpg').replace('-videoThumb.jpg', '-videoLarge.jpg')
+        thumb = xml.xpath('//li[@titleref="' + video['ref'] + '"]/a/img')[0].get('src')
       except:
         thumb = None
+
+    if thumb == None:
+      thumb = R(ICON)
+    else:
+      thumb_list = [thumb.replace('-thumbWide.jpg', '-videoLarge.jpg').replace('-videoThumb.jpg', '-videoLarge.jpg'),
+                    thumb]
+      thumb = Resource.ContentsOfURLWithFallback(thumb_list, fallback = ICON)
 
     oc.add(VideoClipObject(
       url = video['turi'],
