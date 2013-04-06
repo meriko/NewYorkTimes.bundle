@@ -1,120 +1,68 @@
-TITLE           = 'New York Times'
-ART             = 'art-default.jpg'
-ICON            = 'icon-default.jpg'
+NYT_ROOT = 'http://video.nytimes.com/video'
+PLAYLIST_URL = 'http://www.nytimes.com/video/svc/scoop/playlist/%s/index.html' # This is a json feed
 
-NYT_PREFIX      = '/video/thenytimes'
-NYT_ROOT        = 'http://video.nytimes.com/video'
-NYT_SEARCH      = 'http://query.nytimes.com/search/video?date_select=full&type=nyt&query=%s&x=0&y=0&n=50'
-
-CACHE_INTERVAL = 3600 * 6
+RE_CHANNELS = Regex("'channels': (?P<channels_json>\[\{.+?\}\])\};")
 
 ####################################################################################################
 def Start():
 
-  Plugin.AddPrefixHandler(NYT_PREFIX, MainMenu, TITLE, ICON, ART)
-  Plugin.AddViewGroup("Details", viewMode = "InfoList", mediaType = "items")
-
-  ObjectContainer.title1 = TITLE
-  ObjectContainer.view_group = 'Details'
-  ObjectContainer.art = R(ART)
-
-  DirectoryObject.art = R(ART)
-  DirectoryObject.thumb = R(ICON)
-  InputDirectoryObject.art = R(ART)
-  InputDirectoryObject.thumb = R(ICON)
-  VideoClipObject.art = R(ART)
-  VideoClipObject.thumb = R(ICON)
-
-  HTTP.CacheTime = CACHE_INTERVAL
+	ObjectContainer.title1 = 'New York Times'
+	HTTP.CacheTime = CACHE_1HOUR
 
 ####################################################################################################
+@handler('/video/thenytimes', 'New York Times')
 def MainMenu():
 
-  oc = ObjectContainer()
-
-  oc.add(DirectoryObject(key = Callback(GetPlaylist, title = L("Featured"), url = NYT_ROOT, id = 'playlistMostViewedFeatured'), title = L("Featured")))
-  oc.add(DirectoryObject(key = Callback(GetPlaylist, title = L("Most Viewed"), url = NYT_ROOT, id = 'playlistMostViewed'), title = L("Most Viewed")))
-
-  page = HTML.ElementFromURL(NYT_ROOT)
-
-  for li in page.xpath('//td[@id="leftNav"]/ul/li'):
-    if li.get('class') != 'closed':
-      title = li.find('a').text
-      url = li.find('a').get('href')
-      oc.add(DirectoryObject(key = Callback(GetPlaylist, title = title, url = url), title = title))
-
-  oc.add(InputDirectoryObject(key = Callback(Search), title = L("Search..."), prompt=L("Search for Videos")))
-
-  return oc
+	return Channels()
 
 ####################################################################################################
-def GetPlaylist(title, url, id='playlistCurrent'):
+@route('/video/thenytimes/channels', i=int)
+def Channels(title='', i=-1):
 
-  oc = ObjectContainer(title2 = title)
+	oc = ObjectContainer()
 
-  data = HTTP.Request(url).content
-  xml = HTML.ElementFromString(data)
+	page = HTTP.Request(NYT_ROOT, cacheTime=CACHE_1DAY).content
+	chanels_json = RE_CHANNELS.search(page).group('channels_json')
 
-  playlist_regex = Regex(r"NYTD_PlaylistMgr.addPlaylist\(({ id:'" + id + ".*?\]})\);", Regex.MULTILINE | Regex.DOTALL)
-  matches = playlist_regex.findall(data)
-  obj = JSON.ObjectFromString(matches[0].encode('utf-8'))
+	if i == -1:
+		channels = JSON.ObjectFromString(chanels_json)
+	else:
+		channels = JSON.ObjectFromString(chanels_json)[i]['subChannels']
 
-  for video in obj['list']:
-    if 'timg_wide' in video:
-      thumb = video['timg_wide']
-    else:
-      try:
-        thumb = xml.xpath('//li[@titleref="' + video['ref'] + '"]/a/img')[0].get('src')
-      except:
-        thumb = None
+	for i, channel in enumerate(channels):
+		if 'showInLibrary' in channel and not channel['showInLibrary']:
+			continue
 
-    if thumb == None:
-      thumb = R(ICON)
-    else:
-      thumb_list = [thumb.replace('-thumbWide.jpg', '-videoLarge.jpg').replace('-videoThumb.jpg', '-videoLarge.jpg'),
-                    thumb]
-      thumb = Resource.ContentsOfURLWithFallback(thumb_list, fallback = ICON)
+		title = channel['displayName']
 
-    oc.add(VideoClipObject(
-      url = video['turi'],
-      title = video['name'],
-      summary = video['desc'],
-      thumb = thumb
-    ))
+		if 'subChannels' not in channel or len(channel['subChannels']) < 1:
+			oc.add(DirectoryObject(
+				key = Callback(Playlist, title=title, playlist_id=channel['knewsId']),
+				title = title
+			))
+		else:
+			oc.add(DirectoryObject(
+				key = Callback(Channels, title=title, i=i),
+				title = title
+			))
 
-  return oc
+	return oc
 
 ####################################################################################################
-def Search(query = 'the', page = 1):
+@route('/video/thenytimes/playlist')
+def Playlist(title, playlist_id):
 
-  oc = ObjectContainer(title2 = query)
-  query = query.replace(' ','+')
-  page = HTML.ElementFromURL(NYT_SEARCH % query)
+	oc = ObjectContainer(title2=title)
+	json_obj = JSON.ObjectFromURL(PLAYLIST_URL % playlist_id)
 
-  for li in page.xpath("//li[@class='clearfix']"):
-    thumbVideo = li.xpath('ul/li[@class="thumb video"]')
+	for video in json_obj['videos']:
+		oc.add(VideoClipObject(
+			url = video['permalink'],
+			title = video['name'],
+			summary = video['longDescription'],
+			duration = video['length'] if isinstance(video['length'], int) else None,
+			originally_available_at = Datetime.ParseDate(video['publishedDateGMT']).date(),
+			thumb = Resource.ContentsOfURLWithFallback(video['videoStillURL'])
+		))
 
-    if len(thumbVideo) > 0:
-      video = thumbVideo[0]
-      thumb = video.xpath('a/img')[0].get('src')
-      video_url = video.find('a').get('href')
-      summaryItem = li.xpath('ul/li[@class="summary"]')[0]
-      date_text = summaryItem.xpath('span[@class="byline"]')[0].text
-      date = Datetime.ParseDate(date_text)
-      title = ''.join(summaryItem.xpath('h3/a')[0].itertext()).strip()
-      title = title.replace(' - Video Library','')
-
-      summary = ''.join(li.itertext())
-      summary = summary.replace('Video:','')
-      summary = summary.replace(' - Video Library','')
-      summary = summary.replace(title,'')
-      summary = summary.replace(date_text,'')
-
-    oc.add(VideoClipObject(
-      url = video_url,
-      title = title,
-      summary = summary.strip(),
-      thumb = thumb
-    ))
-
-  return oc
+	return oc
