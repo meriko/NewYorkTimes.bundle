@@ -49,7 +49,7 @@ def Channels(title='', i=-1):
 	return oc
 
 ####################################################################################################
-@route('/video/thenytimes/playlist')
+@route('/video/thenytimes/playlist', allow_sync=True)
 def Playlist(title, playlist_id):
 
 	oc = ObjectContainer(title2=title)
