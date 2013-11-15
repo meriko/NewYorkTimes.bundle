@@ -1,7 +1,5 @@
-NYT_ROOT = 'http://video.nytimes.com/video'
-PLAYLIST_URL = 'http://www.nytimes.com/video/svc/scoop/playlist/%s/index.html' # This is a json feed
-
-RE_CHANNELS = Regex("'channels': (?P<channels_json>\[\{.+?\}\])\};")
+NYT_ROOT = 'http://www.nytimes.com/video'
+PLAYLIST_URL = 'http://www.nytimes.com/svc/video/api/playlist/%s'
 
 ####################################################################################################
 def Start():
@@ -13,38 +11,17 @@ def Start():
 @handler('/video/thenytimes', 'New York Times')
 def MainMenu():
 
-	return Channels()
-
-####################################################################################################
-@route('/video/thenytimes/channels', i=int)
-def Channels(title='', i=-1):
-
 	oc = ObjectContainer()
+	html = HTML.ElementFromURL(NYT_ROOT, cacheTime=CACHE_1DAY)
 
-	page = HTTP.Request(NYT_ROOT, cacheTime=CACHE_1DAY).content
-	chanels_json = RE_CHANNELS.search(page).group('channels_json')
+	for channel in html.xpath('//nav[contains(@class, "main-nav")]//li[@data-id]'):
+		title = channel.xpath('./a//text()')[0]
+		playlist_id = channel.xpath('./@data-id')[0]
 
-	if i == -1:
-		channels = JSON.ObjectFromString(chanels_json)
-	else:
-		channels = JSON.ObjectFromString(chanels_json)[i]['subChannels']
-
-	for i, channel in enumerate(channels):
-		if 'showInLibrary' in channel and not channel['showInLibrary']:
-			continue
-
-		title = channel['displayName']
-
-		if 'subChannels' not in channel or len(channel['subChannels']) < 1:
-			oc.add(DirectoryObject(
-				key = Callback(Playlist, title=title, playlist_id=channel['knewsId']),
-				title = title
-			))
-		else:
-			oc.add(DirectoryObject(
-				key = Callback(Channels, title=title, i=i),
-				title = title
-			))
+		oc.add(DirectoryObject(
+			key = Callback(Playlist, title=title, playlist_id=playlist_id),
+			title = title
+		))
 
 	return oc
 
@@ -56,13 +33,16 @@ def Playlist(title, playlist_id):
 	json_obj = JSON.ObjectFromURL(PLAYLIST_URL % playlist_id)
 
 	for video in json_obj['videos']:
+
+		date = video['publish_url'].split('/')
+		date = '%s-%s-%s' % (date[2], date[3], date[4])
+
 		oc.add(VideoClipObject(
-			url = video['permalink'],
-			title = video['name'],
-			summary = video['longDescription'],
-			duration = video['length'] if isinstance(video['length'], int) else None,
-			originally_available_at = Datetime.ParseDate(video['publishedDateGMT']).date(),
-			thumb = Resource.ContentsOfURLWithFallback(video['videoStillURL'])
+			url = '%s%s' % (video['domain'], video['seo_url']),
+			title = video['headline'],
+			summary = video['summary'],
+			originally_available_at = Datetime.ParseDate(date).date(),
+			thumb = Resource.ContentsOfURLWithFallback('%s/%s' % (video['domain'], video['images'][-1]['url']))
 		))
 
 	return oc
