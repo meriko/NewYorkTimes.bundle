@@ -33,16 +33,24 @@ def Playlist(title, playlist_id):
 	json_obj = JSON.ObjectFromURL(PLAYLIST_URL % playlist_id)
 
 	for video in json_obj['videos']:
-
-		date = video['publish_url'].split('/')
-		date = '%s-%s-%s' % (date[2], date[3], date[4])
+		try:
+			date = video['images'][1]['url'].split('/')
+			date = '%s-%s-%s' % (date[1], date[2], date[3])
+			originally_available_at = Datetime.ParseDate(date).date()
+		except:
+			originally_available_at = None
+			
+		try:
+			img = '%s/%s' % (video['domain'], video['images'][1]['url'])
+		except:
+			img = None
 
 		oc.add(VideoClipObject(
 			url = '%s%s' % (video['domain'], video['seo_url']),
 			title = video['headline'],
 			summary = video['summary'],
-			originally_available_at = Datetime.ParseDate(date).date(),
-			thumb = Resource.ContentsOfURLWithFallback('%s/%s' % (video['domain'], video['images'][-1]['url']))
+			originally_available_at = originally_available_at,
+			thumb = Resource.ContentsOfURLWithFallback(img)
 		))
 
 	return oc
